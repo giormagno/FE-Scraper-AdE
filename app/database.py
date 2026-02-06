@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 import os
@@ -26,6 +26,7 @@ class DatiGenerali(Base):
     divisa = Column(String)
     data = Column(String)
     numero = Column(String)
+    data_ricezione = Column(String)
     
     # Nuovi campi Fase 7
     importo_totale = Column(Float)
@@ -142,3 +143,10 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # Migrazione semplice: aggiunge colonna data_ricezione se manca
+    with engine.connect() as conn:
+        res = conn.execute(text("PRAGMA table_info(dati_generali)"))
+        cols = [row[1] for row in res.fetchall()]
+        if "data_ricezione" not in cols:
+            conn.execute(text("ALTER TABLE dati_generali ADD COLUMN data_ricezione TEXT"))
+            conn.commit()

@@ -3,7 +3,7 @@ from lxml import etree
 from sqlalchemy import func
 from datetime import datetime
 from app.database import (
-    SessionLocal, DatiGenerali, Anagrafica, RigheFattura, 
+    SessionLocal, DatiGenerali, Anagrafica, RigheFattura,
     DatiRiferimento, DatiDDT, DatiRiepilogo, DatiPagamento, DettaglioPagamento, init_db
 )
 
@@ -57,7 +57,7 @@ def get_or_create_anagrafica(db, element):
     db.flush()
     return new_anag
 
-def process_xml_file(file_path: str) -> str:
+def process_xml_file(file_path: str, data_ricezione: str | None = None) -> str:
     """Parsa un file XML della fattura elettronica ed estrae i dati completi (Fase 7)."""
     if not os.path.exists(file_path): return "ERROR"
 
@@ -88,12 +88,16 @@ def process_xml_file(file_path: str) -> str:
         causali_el = dati_gen_el.xpath(".//*[local-name()='Causale']")
         causale_text = " | ".join([c.text for c in causali_el if c.text]) if causali_el else None
 
+        data_fattura = get_text(dati_gen_el, ".//*[local-name()='Data']")
+        data_ricezione_finale = data_ricezione if data_ricezione else data_fattura
+
         new_fat = DatiGenerali(
             nome_file=nome_file,
             tipo_documento=get_text(dati_gen_el, ".//*[local-name()='TipoDocumento']"),
             divisa=get_text(dati_gen_el, ".//*[local-name()='Divisa']"),
-            data=get_text(dati_gen_el, ".//*[local-name()='Data']"),
+            data=data_fattura,
             numero=get_text(dati_gen_el, ".//*[local-name()='Numero']"),
+            data_ricezione=data_ricezione_finale,
             importo_totale=clean_float(get_text(dati_gen_el, ".//*[local-name()='ImportoTotaleDocumento']")),
             arrotondamento=clean_float(get_text(dati_gen_el, ".//*[local-name()='Arrotondamento']")),
             causale=causale_text,

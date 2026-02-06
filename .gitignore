@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.env
+log_*.txt
+JSON_extr/
+*_FE/
+fatture_v3.db
