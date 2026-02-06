@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sys
+import json
 from datetime import datetime, timedelta
 from typing import Dict, List
 
@@ -113,6 +114,10 @@ def main():
     engine = FEScraperEngine(logger)
 
     try:
+        json_dir = "JSON_extr"
+        os.makedirs(json_dir, exist_ok=True)
+        run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
         p_auth = engine.login(cfg["CF"], cfg["PIN"], cfg["PASSWORD"])
         
         # Selezione del motore e rilevamento PIVA operativa
@@ -125,6 +130,9 @@ def main():
 
         # Download RICEVUTE
         data_ric = engine.fetch_invoices(cfg["DATA_DAL"], cfg["DATA_AL"], "RICEVUTE")
+        ric_path = os.path.join(json_dir, f"fatture_ricevute_{run_ts}.json")
+        with open(ric_path, "w", encoding="utf-8") as f:
+            json.dump(data_ric, f, ensure_ascii=False, indent=2)
         stats_ric = {"found": 0, "downloaded": 0}
         if data_ric["totaleFatture"] > 0:
             stats_ric = output.download_invoices_set(
@@ -135,6 +143,9 @@ def main():
 
         # Download EMESSE
         data_eme = engine.fetch_invoices(cfg["DATA_DAL"], cfg["DATA_AL"], "EMESSE")
+        eme_path = os.path.join(json_dir, f"fatture_emesse_{run_ts}.json")
+        with open(eme_path, "w", encoding="utf-8") as f:
+            json.dump(data_eme, f, ensure_ascii=False, indent=2)
         stats_eme = {"found": 0, "downloaded": 0}
         if data_eme["totaleFatture"] > 0:
             stats_eme = output.download_invoices_set(

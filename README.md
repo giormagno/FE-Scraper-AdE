@@ -16,6 +16,7 @@ Il progetto è organizzato come segue:
 - `.env`: File di configurazione per le credenziali e i parametri di esecuzione.
 - `requirements.txt`: Elenco delle dipendenze Python necessarie.
 - `fatture_v3.db`: Database SQLite locale (creato automaticamente al primo avvio) contenente i dati estratti dalle fatture.
+- `recover.py`: Script di recupero download falliti a partire da un JSON locale.
 
 ## Accessi e Gestione
 
@@ -39,6 +40,8 @@ L'output viene generato nella cartella `{PIVA}_FE/`, suddivisa in:
     - `INFO/`: Contiene i metadati e le informazioni associate fornite dall'AdE.
     - `FATTURE/`: Contiene esclusivamente i file in formato XML (estratti se originariamente P7M).
 - **Database**: Dati strutturati salvati in `fatture_v3.db`.
+- **JSON ricerca fatture**: In `JSON_extr/` vengono salvati i JSON completi delle fatture emesse/ricevute con timestamp.
+- **Download falliti**: File `download_failures.json` e `download_failures_struct.json` per ogni categoria.
 - **Log**: Report dettagliato dell'esecuzione in `log_esecuzione.txt`.
 
 ## Funzionalità aggiuntive
@@ -47,6 +50,8 @@ L'output viene generato nella cartella `{PIVA}_FE/`, suddivisa in:
 - **Modalità Daily**: Configurando `DAILY=1`, l'app imposta automaticamente il range di ricerca tra ieri e oggi.
 - **Gestione Chunk**: La ricerca viene suddivisa automaticamente in periodi di 3 mesi per superare i limiti temporali del portale AdE.
 - **Deep Parsing**: Non solo download, ma estrazione di ogni dettaglio della fattura (incluse righe articolo e scadenze pagamenti).
+- **Data Ricezione**: Per le ricevute viene salvata `dataConsegna`; per le emesse è impostata uguale alla data fattura.
+- **Recovery**: Possibilità di riprovare i download falliti leggendo un JSON locale.
 
 ## Istruzioni sommarie
 
@@ -54,3 +59,19 @@ L'output viene generato nella cartella `{PIVA}_FE/`, suddivisa in:
 2. Installa le dipendenze: `pip install -r requirements.txt`.
 3. Avvia lo script: `python main.py`.
 4. Controlla la cartella dei risultati e il database per i dati estratti.
+
+Se si vuole automatizzare la procedura in modo tale che venga eseguita ogni giorno, leggi il paragrafo "Automatizza lo script" nel file `ISTRUZIONI.md`.
+
+## Recupero download falliti
+
+Usa `recover.py` passando il file `download_failures_struct.json` generato durante un run:
+
+```bash
+python recover.py /percorso/al/download_failures_struct.json
+```
+
+È possibile usare un file `.env` alternativo:
+
+```bash
+python recover.py /percorso/al/download_failures_struct.json --env .profilo
+```

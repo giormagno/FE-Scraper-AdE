@@ -1,6 +1,7 @@
 import os
 import re
 import base64
+import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from asn1crypto import cms
@@ -56,9 +57,9 @@ class OutputManager:
             "ERROR": 0
         }
 
-    def _handle_db_hook(self, xml_path: str):
+    def _handle_db_hook(self, xml_path: str, data_ricezione: Optional[str] = None):
         if self.db_enabled:
-            status = process_xml_file(xml_path)
+            status = process_xml_file(xml_path, data_ricezione=data_ricezione)
             if status in self.db_stats:
                 self.db_stats[status] += 1
 
@@ -82,6 +83,7 @@ class OutputManager:
             "found": total, 
             "downloaded": 0, 
             "failed": [], 
+            "failed_struct": [],
             "p7m_errors": []
         }
 
@@ -92,8 +94,22 @@ class OutputManager:
         if tqdm:
             iterator = tqdm(iterator, total=total, desc=f"Download {category}", unit="fatt", ascii=True)
 
+        def get_with_retry(url: str, headers: Dict[str, str], attempts: int = 3, delay_s: float = 1.0):
+            last_resp = None
+            for attempt in range(1, attempts + 1):
+                last_resp = session.get(url, headers=headers, stream=True)
+                if last_resp.status_code not in (304, 503):
+                    return last_resp
+                if attempt < attempts:
+                    self.logger(
+                        f"  [RETRY] Status {last_resp.status_code} -> tentativo {attempt + 1}/{attempts}"
+                    )
+                    time.sleep(delay_s * attempt)
+            return last_resp
+
         for _, fattura in iterator:
             fattura_file = f"{fattura['tipoInvio']}{fattura['idFattura']}"
+            data_ricezione = fattura.get("dataConsegna") if category == "RICEVUTE" else None
 
             # 1) Scarico FILE_FATTURA
             try:
@@ -101,10 +117,25 @@ class OutputManager:
                     "https://ivaservizi.agenziaentrate.gov.it/cons/cons-services/rs/fatture/file/"
                     f"{fattura_file}?tipoFile=FILE_FATTURA&download=1&v={unix_ms_func()}"
                 )
-                r = session.get(url, headers=headers_token, stream=True)
+                r = get_with_retry(url, headers_token)
 
                 if r.status_code != 200:
-                    stats["failed"].append(f"{fattura_file} (Status {r.status_code})")
+                    fail_struct = {
+                        "idFattura": fattura.get("idFattura"),
+                        "tipoInvio": fattura.get("tipoInvio"),
+                        "status": r.status_code,
+                        "url": url,
+                        "category": category,
+                        "tipoFile": "FILE_FATTURA",
+                    }
+                    fail_msg = (
+                        f"{fattura_file} (Status {r.status_code}) "
+                        f"idFattura={fattura.get('idFattura')} tipoInvio={fattura.get('tipoInvio')} "
+                        f"url={url}"
+                    )
+                    stats["failed"].append(fail_msg)
+                    stats["failed_struct"].append(fail_struct)
+                    self.logger(f"  [DOWNLOAD KO] {fail_msg}")
                     continue
 
                 fname = safe_filename_from_disposition(r.headers.get("content-disposition", ""), f"file_{fattura_file}")
@@ -132,7 +163,7 @@ class OutputManager:
                             with open(xml_path, "wb") as f:
                                 f.write(xml_content)
                             # Hook per il database
-                            self._handle_db_hook(xml_path)
+                            self._handle_db_hook(xml_path, data_ricezione=data_ricezione)
                         else:
                             stats["p7m_errors"].append(fname)
 
@@ -142,12 +173,25 @@ class OutputManager:
                         with open(xml_path, "wb") as f:
                             f.write(content)
                         # Hook per il database
-                        self._handle_db_hook(xml_path)
+                        self._handle_db_hook(xml_path, data_ricezione=data_ricezione)
 
                 stats["downloaded"] += 1
 
             except Exception as e:
-                stats["failed"].append(f"{fattura_file} (Errore: {e})")
+                fail_struct = {
+                    "idFattura": fattura.get("idFattura"),
+                    "tipoInvio": fattura.get("tipoInvio"),
+                    "error": str(e),
+                    "category": category,
+                    "tipoFile": "FILE_FATTURA",
+                }
+                fail_msg = (
+                    f"{fattura_file} (Errore: {e}) "
+                    f"idFattura={fattura.get('idFattura')} tipoInvio={fattura.get('tipoInvio')}"
+                )
+                stats["failed"].append(fail_msg)
+                stats["failed_struct"].append(fail_struct)
+                self.logger(f"  [DOWNLOAD KO] {fail_msg}")
 
             # 2) Scarico FILE_METADATI (opzionale)
             try:
@@ -155,7 +199,7 @@ class OutputManager:
                     "https://ivaservizi.agenziaentrate.gov.it/cons/cons-services/rs/fatture/file/"
                     f"{fattura_file}?tipoFile=FILE_METADATI&download=1&v={unix_ms_func()}"
                 )
-                r = session.get(url_meta, headers=headers_token, stream=True)
+                r = get_with_retry(url_meta, headers_token)
                 if r.status_code == 200:
                     fname = safe_filename_from_disposition(
                         r.headers.get("content-disposition", ""), f"meta_{fattura_file}"
@@ -167,6 +211,30 @@ class OutputManager:
                         f.write(content)
             except Exception:
                 pass 
+
+        # Salva elenco errori download in JSON
+        if stats["failed"]:
+            failures_path = os.path.join(base_path, "download_failures.json")
+            with open(failures_path, "w", encoding="utf-8") as f:
+                data = {
+                    "category": category,
+                    "found": stats["found"],
+                    "downloaded": stats["downloaded"],
+                    "failed": stats["failed"],
+                }
+                import json
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        if stats["failed_struct"]:
+            failures_path = os.path.join(base_path, "download_failures_struct.json")
+            with open(failures_path, "w", encoding="utf-8") as f:
+                data = {
+                    "category": category,
+                    "found": stats["found"],
+                    "downloaded": stats["downloaded"],
+                    "failed": stats["failed_struct"],
+                }
+                import json
+                json.dump(data, f, ensure_ascii=False, indent=2)
 
         return stats
 
