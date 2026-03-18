@@ -1,32 +1,45 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, text
+from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, text, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 import os
+def load_env(path: str = ".env") -> dict:
+    env_data = {}
+    if not os.path.exists(path):
+         return env_data
+    with open(path, "r", encoding="utf-8") as f:
+         for line in f:
+             line = line.strip()
+             if not line or line.startswith("#") or "=" not in line:
+                 continue
+             k, v = line.split("=", 1)
+             env_data[k.strip()] = v.strip()
+    return env_data
+
 
 Base = declarative_base()
 
 class Anagrafica(Base):
     __tablename__ = 'anagrafica'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    id_fiscale = Column(String, unique=True, index=True) # PIVA o CF
-    piva = Column(String)
-    cf = Column(String)
-    denominazione = Column(String)
-    indirizzo = Column(String)
-    comune = Column(String)
-    cap = Column(String)
-    nazione = Column(String)
+    id_fiscale = Column(String(255), unique=True, index=True) # PIVA o CF
+    piva = Column(String(255))
+    cf = Column(String(255))
+    denominazione = Column(String(255))
+    indirizzo = Column(String(255))
+    comune = Column(String(255))
+    cap = Column(String(255))
+    nazione = Column(String(255))
 
 class DatiGenerali(Base):
     __tablename__ = 'dati_generali'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    nome_file = Column(String, unique=True)
-    tipo_documento = Column(String)
-    divisa = Column(String)
-    data = Column(String)
-    numero = Column(String)
-    data_ricezione = Column(String)
+    nome_file = Column(String(255), unique=True)
+    tipo_documento = Column(String(255))
+    divisa = Column(String(255))
+    data = Column(String(255))
+    numero = Column(String(255))
+    data_ricezione = Column(String(255))
     
     # Nuovi campi Fase 7
     importo_totale = Column(Float)
@@ -52,7 +65,7 @@ class RigheFattura(Base):
     id_fattura = Column(Integer, ForeignKey('dati_generali.id'))
     
     numero_linea = Column(Integer)
-    descrizione = Column(String)
+    descrizione = Column(Text)
     quantita = Column(Float)
     prezzo_unitario = Column(Float)
     prezzo_totale = Column(Float)
@@ -65,14 +78,14 @@ class DatiRiferimento(Base):
     __tablename__ = 'dati_riferimento'
     id = Column(Integer, primary_key=True, autoincrement=True)
     id_fattura = Column(Integer, ForeignKey('dati_generali.id'))
-    tipo = Column(String) # ORDINE, CONTRATTO, CONVENZIONE, FATTURE_COLLEGATE
+    tipo = Column(String(255)) # ORDINE, CONTRATTO, CONVENZIONE, FATTURE_COLLEGATE
     
     riferimento_numero_linea = Column(Integer)
-    id_documento = Column(String)
-    data = Column(String)
-    codice_commessa = Column(String)
-    codice_cup = Column(String)
-    codice_cig = Column(String)
+    id_documento = Column(String(255))
+    data = Column(String(255))
+    codice_commessa = Column(String(255))
+    codice_cup = Column(String(255))
+    codice_cig = Column(String(255))
     
     id_riga_db = Column(Integer, ForeignKey('righe_fattura.id'), nullable=True) # Link alla riga specifica nel DB
     
@@ -84,8 +97,8 @@ class DatiDDT(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     id_fattura = Column(Integer, ForeignKey('dati_generali.id'))
     
-    numero_ddt = Column(String)
-    data_ddt = Column(String)
+    numero_ddt = Column(String(255))
+    data_ddt = Column(String(255))
     riferimento_numero_linea = Column(Integer)
     
     id_riga_db = Column(Integer, ForeignKey('righe_fattura.id'), nullable=True)
@@ -99,13 +112,13 @@ class DatiRiepilogo(Base):
     id_fattura = Column(Integer, ForeignKey('dati_generali.id'))
     
     aliquota_iva = Column(Float)
-    natura = Column(String)
+    natura = Column(String(255))
     spese_accessorie = Column(Float)
     arrotondamento = Column(Float)
     imponibile_importo = Column(Float)
     imposta = Column(Float)
-    esigibilita_iva = Column(String)
-    riferimento_normativo = Column(String)
+    esigibilita_iva = Column(String(255))
+    riferimento_normativo = Column(String(255))
     
     fattura = relationship("DatiGenerali", back_populates="riepilogo")
 
@@ -115,7 +128,7 @@ class DatiPagamento(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     id_fattura = Column(Integer, ForeignKey('dati_generali.id'))
     
-    condizioni_pagamento = Column(String)
+    condizioni_pagamento = Column(String(255))
     
     fattura = relationship("DatiGenerali", back_populates="pagamenti")
     dettagli = relationship("DettaglioPagamento", back_populates="testata_pagamento")
@@ -126,27 +139,41 @@ class DettaglioPagamento(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     id_pagamento = Column(Integer, ForeignKey('dati_pagamento.id'))
     
-    modalita_pagamento = Column(String)
-    data_scadenza = Column(String)
+    modalita_pagamento = Column(String(255))
+    data_scadenza = Column(String(255))
     importo = Column(Float)
-    iban = Column(String)
-    abi = Column(String)
-    cab = Column(String)
-    bic = Column(String)
+    iban = Column(String(255))
+    abi = Column(String(255))
+    cab = Column(String(255))
+    bic = Column(String(255))
     
     testata_pagamento = relationship("DatiPagamento", back_populates="dettagli")
 
-# Database SQLite locale - V3 per schema espanso
-DB_PATH = "fatture_v3.db"
-engine = create_engine(f"sqlite:///{DB_PATH}")
+# Database Configuration
+env = load_env()
+db_type = env.get("DB_TYPE", "sqlite").lower()
+
+if db_type == "mysql":
+    db_host = env.get("DB_HOST", "localhost")
+    db_port = env.get("DB_PORT", "3306")
+    db_name = env.get("DB_NAME", "")
+    db_user = env.get("DB_USER", "")
+    db_pass = env.get("DB_PASS", "")
+    connection_string = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+else:
+    # Default is SQLite
+    db_path = env.get("DB_SQLITE_PATH", "fatture_v3.db")
+    connection_string = f"sqlite:///{db_path}"
+
+engine = create_engine(connection_string)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     Base.metadata.create_all(bind=engine)
     # Migrazione semplice: aggiunge colonna data_ricezione se manca
-    with engine.connect() as conn:
-        res = conn.execute(text("PRAGMA table_info(dati_generali)"))
-        cols = [row[1] for row in res.fetchall()]
-        if "data_ricezione" not in cols:
+    inspector = inspect(engine)
+    columns = [c['name'] for c in inspector.get_columns('dati_generali')]
+    if "data_ricezione" not in columns:
+        with engine.connect() as conn:
             conn.execute(text("ALTER TABLE dati_generali ADD COLUMN data_ricezione TEXT"))
             conn.commit()

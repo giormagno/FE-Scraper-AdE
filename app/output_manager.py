@@ -47,7 +47,7 @@ class OutputManager:
         self.logger = logger_func
         self.db_enabled = db_enabled
         # Cartella PartitaIVA_FE invece di Ricevute_partitaIVA
-        self.root_path = f"{piva}_FE"
+        self.root_path = os.path.join("output", f"{piva}_FE")
         ensure_dirs(self.root_path)
         
         # Statistiche Database (cumulate per tutta la sessione)
