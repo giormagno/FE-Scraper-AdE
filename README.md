@@ -2,6 +2,14 @@
 **Aggiornato il: 18/03/2026**
 
 FE Scraper è un tool Python avanzato per l'automazione del download delle fatture elettroniche (emesse e ricevute) dal portale dell'Agenzia delle Entrate. Supporta l'estrazione automatica da file P7M, l'organizzazione in cartelle strutturate e il salvataggio dei dati completi in un database (SQLite o MySQL) per una facile consultazione.
+L'aggiornamento del 18/03/2026 ha introdotto: 
+- la possibilità di eseguire lo script tramite **Docker**;
+- la compatibilità con il salvataggio dei dati in **MySQL**.
+
+Perchè queste modifiche?
+se hai già un database MySQL puoi creare un nuovo database e importare i dati delle fatture; se il tuo MySQL gira già su Docker, potrai ora collegare facilmente il database al container. In questo modo non dovrai più usare SQLite e potrai consultare i dati delle fatture da qualsiasi dispositivo connesso al database.
+Per far questo fai attenzione a condividere la stessa rete tra i due container, ad esempio usando la rete `shared-internal-net` (sia nel container di MySQL sia nel container di FE Scraper). In questo modo il container di FE Scraper potrà comunicare con il container di MySQL usando il nome del servizio come hostname.
+
 
 ## Struttura del progetto
 
@@ -18,7 +26,7 @@ Il progetto è organizzato come segue:
 - `requirements.txt`: Elenco delle dipendenze Python necessarie.
 - `fatture_v3.db`: Database SQLite locale (creato automaticamente al primo avvio) contenente i dati estratti dalle fatture.
 - `recover.py`: Script di recupero download falliti a partire da un JSON locale.
-- `Dockerfile` / `docker-compose.yml`: File per l'esecuzione del servizio tramite Docker.
+- `Dockerfile` / `docker-compose.yml`: File per l'esecuzione del servizio tramite Docker (opzionale!).
 - `entrypoint.sh`: Script di gestione loop per esecuzione continua in container.
 
 ## Accessi e Gestione
