@@ -10,6 +10,7 @@ Perchè queste modifiche?
 se hai già un database MySQL puoi creare un nuovo database e importare i dati delle fatture; se il tuo MySQL gira già su Docker, potrai ora collegare facilmente il database al container. In questo modo non dovrai più usare SQLite e potrai consultare i dati delle fatture da qualsiasi dispositivo connesso al database.
 Per far questo fai attenzione a condividere la stessa rete tra i due container, ad esempio usando la rete `shared-internal-net` (sia nel container di MySQL sia nel container di FE Scraper). In questo modo il container di FE Scraper potrà comunicare con il container di MySQL usando il nome del servizio come hostname.
 
+E' stato aggiunto un markdown Campi_FE.md che riepiloga quali sono i campi della FE che vengono salvati all'interno del database.
 
 ## Struttura del progetto
 
