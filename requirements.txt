@@ -4,3 +4,5 @@ tqdm
 asn1crypto
 lxml
 sqlalchemy
+pymysql
+cryptography

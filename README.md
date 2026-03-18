@@ -1,6 +1,7 @@
 # FE Scraper - Downloader Fatture Elettroniche
+**Aggiornato il: 18/03/2026**
 
-FE Scraper è un tool Python avanzato per l'automazione del download delle fatture elettroniche (emesse e ricevute) dal portale dell'Agenzia delle Entrate. Supporta l'estrazione automatica da file P7M, l'organizzazione in cartelle strutturate e il salvataggio dei dati completi in un database SQLite per una facile consultazione.
+FE Scraper è un tool Python avanzato per l'automazione del download delle fatture elettroniche (emesse e ricevute) dal portale dell'Agenzia delle Entrate. Supporta l'estrazione automatica da file P7M, l'organizzazione in cartelle strutturate e il salvataggio dei dati completi in un database (SQLite o MySQL) per una facile consultazione.
 
 ## Struttura del progetto
 
@@ -17,6 +18,8 @@ Il progetto è organizzato come segue:
 - `requirements.txt`: Elenco delle dipendenze Python necessarie.
 - `fatture_v3.db`: Database SQLite locale (creato automaticamente al primo avvio) contenente i dati estratti dalle fatture.
 - `recover.py`: Script di recupero download falliti a partire da un JSON locale.
+- `Dockerfile` / `docker-compose.yml`: File per l'esecuzione del servizio tramite Docker.
+- `entrypoint.sh`: Script di gestione loop per esecuzione continua in container.
 
 ## Accessi e Gestione
 
@@ -47,6 +50,8 @@ L'output viene generato nella cartella `{PIVA}_FE/`, suddivisa in:
 ## Funzionalità aggiuntive
 
 - **Estrazione P7M**: Conversione automatica dei file firmati in XML leggibile.
+- **Supporto Multi-Database**: Supporta sia **SQLite** (file locale) che **MySQL** per il salvataggio dei dati.
+- **Supporto Docker**: Configurazione pronta per avviare il tool come servizio continuo o on-demand.
 - **Modalità Daily**: Configurando `DAILY=1`, l'app imposta automaticamente il range di ricerca tra ieri e oggi.
 - **Gestione Chunk**: La ricerca viene suddivisa automaticamente in periodi di 3 mesi per superare i limiti temporali del portale AdE.
 - **Deep Parsing**: Non solo download, ma estrazione di ogni dettaglio della fattura (incluse righe articolo e scadenze pagamenti).

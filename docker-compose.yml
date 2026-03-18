@@ -1,0 +1,21 @@
+services:
+  scraper:
+    build: .
+    image: fe-scraper:latest
+    container_name: fe-scraper-service
+    volumes:
+      - ./.env:/app/.env
+      - ./output:/app/output
+    environment:
+      # Impostare a 1 per farlo girare in ciclo continuo come "servizio"
+      - DOCKER_LOOP=0
+      # Tempo di attesa tra i cicli in secondi (es. 86400 = 24h)
+      - LOOP_SLEEP=86400
+    # restart: unless-stopped
+    networks:
+      - omnitech-net
+
+networks:
+  omnitech-net:
+    external: true
+    name: shared-internal-net

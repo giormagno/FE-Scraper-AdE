@@ -42,8 +42,21 @@ TIPO=FOL
 DAILY=0         
 # 1 per scaricare solo le fatture di ieri/oggi
 DB=1            
-# 1 per salvare i dati nel database SQLite, 0 per solo download file
+# 1 per salvare i dati nel database, 0 per solo download file
 
+# --- CONFIGURAZIONE DATABASE ---
+DB_TYPE=sqlite
+# Valori ammessi: sqlite, mysql
+
+# Parametri per SQLite
+DB_SQLITE_PATH=fatture_v3.db
+
+# Parametri per MySQL (usati solo se DB_TYPE=mysql)
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=fatture_db
+DB_USER=root
+DB_PASS=
 ```
 
 **Nota bene**: Se desideri gestire più clienti, puoi creare file diversi come `.cliente1`, `.cliente2` e caricarli all'avvio (vedi sezione Avvio).
@@ -162,3 +175,115 @@ Questa procedura consente di eseguire lo script ogni giorno in modo automatico.
 - **Dipendenze mancanti**: Assicurati di aver eseguito correttamente `pip install -r requirements.txt`.
 - **Database bloccato**: Se apri il file `fatture_v3.db` con un software esterno durante l'esecuzione, lo script potrebbe fallire il salvataggio dei dati.
 - **Errore "Codice utenza non valido"**: Evita commenti inline nella riga `UTENZA` del file `.env`.
+
+---
+
+## 11. Supporto Multi-Database (SQLite / MySQL)
+
+È possibile scegliere dove salvare le fatture scaricate:
+1.  **SQLite** (Predefinito): Nessuna configurazione richiesta, crea un file `.db` locale.
+2.  **MySQL**: Richiede l'installazione di una libreria aggiuntiva e la configurazione delle variabili nel file `.env`.
+
+### Utilizzo con MySQL
+1.  **Installa il driver**:
+    ```bash
+    pip install pymysql
+    ```
+2.  **Configura `.env`**:
+    *   Imposta `DB_TYPE=mysql`
+    *   Compila i campi `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` e `DB_PASS`.
+
+---
+
+## 12. Esecuzione tramite Docker
+
+È possibile eseguire l'applicazione all'interno di un container Docker, sia come servizio continuo che on-demand.
+
+### Prerequisiti
+*   Docker e Docker Compose installati sul sistema.
+
+### Configurazione
+1.  **File `.env`**: Assicurati di aver configurato il tuo file `.env` nella cartella principale.
+2.  **Modalità Servizio (Loop)**:
+    Nel file `docker-compose.yml`, puoi configurare:
+    ```yaml
+    environment:
+      - DOCKER_LOOP=1  # 1 per ciclo continuo, 0 per run singolo
+      - LOOP_SLEEP=86400  # Tempo in secondi tra i cicli (86400 = 24 ore)
+    ```
+
+### Avvio e Modalità di Esecuzione
+
+Dato che il container interroga l'Agenzia delle Entrate ad ogni avvio (filtrando se `DAILY=1`), hai due modi per farlo girare:
+
+#### **A) Esecuzione Singola "On-Demand" (Consigliata per lanci manuali)**
+Ideale se vuoi lanciarlo tu quando serve, vedere l'output davanti a te e farlo spegnere da solo alla fine senza spreco di risorse.
+```bash
+docker compose run --rm scraper
+```
+*Questo comando crea un container temporaneo, esegue lo scaricamento e lo elimina alla fine, preservando i file.*
+
+#### **B) Esecuzione "Sempre Attivo" (Ciclo continuo)**
+Se nel `docker-compose.yml` hai impostato `DOCKER_LOOP=1`, il servizio rimarrà sempre in background:
+```bash
+# Avvio iniziale (in background)
+docker compose up -d
+
+# Riavvio istantaneo (per forzare un ciclo)
+docker compose restart scraper
+```
+
+---
+
+### 📂 Gestione dei Duplicati
+Non c'è rischio di sovrascrivere o raddoppiare i dati: se un file o una fattura scaricata è già presente nel database, lo script la salta (`[DB] Salto (già presente)`).
+
+### Rete (Network)
+Il file `docker-compose.yml` è configurato per agganciarsi alla rete `shared-internal-net`:
+```yaml
+networks:
+  omnitech-net:
+    external: true
+    name: shared-internal-net
+```
+Assicurati che la rete sia già attiva (es. creata con `docker network create shared-internal-net`) per evitare errori durante l'avvio, soprattutto se necessaria per raggiungere un database MySQL esterno. Se hai già un database MySQL, assicurati che sia collegato alla stessa rete.
+
+esempio docker-compose.yml per MySQL e PHPMyAdmin:
+```yaml
+services:
+  # IL TUO DATABASE
+  db:
+    image: mysql:8.0
+    container_name: mysql_server
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: METTI-UNA-PASSWORD-SICURA
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - backend_net
+
+  # L'INTERFACCIA DI GESTIONE
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: pma
+    restart: always
+    environment:
+      PMA_HOST: db
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+    networks:
+      - backend_net
+
+volumes:
+  mysql_data:
+
+networks:
+  backend_net:
+        external: true
+        name: shared-internal-net
+```

@@ -114,7 +114,7 @@ def main():
     engine = FEScraperEngine(logger)
 
     try:
-        json_dir = "JSON_extr"
+        json_dir = os.path.join("output", "JSON_extr")
         os.makedirs(json_dir, exist_ok=True)
         run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
