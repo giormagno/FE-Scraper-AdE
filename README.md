@@ -1,22 +1,26 @@
 # FE Scraper - Downloader Fatture Elettroniche
 FE Scraper è un tool Python avanzato per l'automazione del download delle fatture elettroniche (emesse e ricevute) dal portale dell'Agenzia delle Entrate. Supporta l'estrazione automatica da file P7M, l'organizzazione in cartelle strutturate e il salvataggio dei dati completi in un database (SQLite o MySQL) per una facile consultazione.
 
-> **UPDATE 02/04/2026**
+**UPDATE 02/04/2026**
 > Il sistema è stato implementato al fine di effettuare il download delle fatture anche con il nuovo layout grafico del portale "Fatture e Corrispettivi" dell'Agenzia delle Entrate.
+> 
 > E' stato inoltre introdotto il retry automatico dei download pendenti: i fallimenti di `FILE_FATTURA` vengono salvati nel file `output/JSON_extr/download_failures_<PIVA>.json` e ritentati automaticamente nei run successivi.
-> Il progetto supporta ora anche la gestione multi-profilo tramite la cartella `aziende/`: se contiene file come `.env.azienda1`, `.env.azienda2`, `python main.py` li esegue automaticamente in serie sia in locale sia in Docker.
+> 
+> Il progetto supporta ora anche la gestione multi-profilo tramite la cartella `aziende/`: se contiene file come `.env.azienda1`, `.env.azienda2`, `python main.py` li esegue automaticamente in serie sia in locale sia in Docker. Prendi spunto da env.example, crea una cartella `aziende` all'interno della repo e mettici tutti gli .env che vuoi!
+> 
 > I log sono stati separati per profilo: il profilo `.env` continua a usare `log_esecuzione.txt` e `log_recover.txt`, mentre i profili in `aziende/` scrivono in `output/logs/`.
 
 **UPDATE 18/03/2026**
-L'aggiornamento del 18/03/2026 ha introdotto: 
-- la possibilità di eseguire lo script tramite **Docker**;
-- la compatibilità con il salvataggio dei dati in **MySQL**.
+> L'aggiornamento del 18/03/2026 ha introdotto: 
+> - la possibilità di eseguire lo script tramite **Docker**;
+> - la compatibilità con il salvataggio dei dati in **MySQL**.
 
-Perchè queste modifiche?
-se hai già un database MySQL puoi creare un nuovo database e importare i dati delle fatture; se il tuo MySQL gira già su Docker, potrai ora collegare facilmente il database al container. In questo modo non dovrai più usare SQLite e potrai consultare i dati delle fatture da qualsiasi dispositivo connesso al database.
-Per far questo fai attenzione a condividere la stessa rete tra i due container, ad esempio usando la rete `shared-internal-net` (sia nel container di MySQL sia nel container di FE Scraper). In questo modo il container di FE Scraper potrà comunicare con il container di MySQL usando il nome del servizio come hostname.
-
-E' stato aggiunto un markdown Campi_FE.md che riepiloga quali sono i campi della FE che vengono salvati all'interno del database.
+> Perchè queste modifiche?
+> se hai già un database MySQL puoi creare un nuovo database e importare i dati delle fatture; se il tuo MySQL gira già su Docker, potrai ora collegare facilmente il database al container. In questo modo non dovrai più usare SQLite e potrai consultare i dati delle fatture da qualsiasi dispositivo connesso al database.
+>
+> Per far questo fai attenzione a condividere la stessa rete tra i due container, ad esempio usando la rete `shared-internal-net` (sia nel container di MySQL sia nel container di FE Scraper). In questo modo il container di FE Scraper potrà comunicare con il container di MySQL usando il nome del servizio come hostname.
+> 
+> E' stato aggiunto un markdown Campi_FE.md che riepiloga quali sono i campi della FE che vengono salvati all'interno del database.
 
 ## Struttura del progetto
 
