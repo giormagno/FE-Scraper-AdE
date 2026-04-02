@@ -242,7 +242,7 @@ Non c'è rischio di sovrascrivere o raddoppiare i dati: se un file o una fattura
 Il file `docker-compose.yml` è configurato per agganciarsi alla rete `shared-internal-net`:
 ```yaml
 networks:
-  omnitech-net:
+  fescraper-net:
     external: true
     name: shared-internal-net
 ```
