@@ -45,6 +45,7 @@ class FEScraperEngine:
         self.headers_cons = {}
         self.headers_token = {}
         self._x_appl: Optional[str] = None
+        self._wizard_template: Dict[str, Any] = {}
 
     def _create_session(self) -> requests.Session:
         requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -76,6 +77,19 @@ class FEScraperEngine:
             r = self.session.request(method, url, headers=headers, **kwargs)
 
         return r
+
+    def _fetch_wizard_template(self) -> Dict[str, Any]:
+        wizard_template = "https://ivaservizi.agenziaentrate.gov.it/instr/instradamento-fatture-rest/rs/wizardTemplate"
+        r = self._request_with_x_appl("GET", wizard_template, verify=False)
+        if r.status_code != 200:
+            raise Exception(f"Wizard template non disponibile (status {r.status_code}).")
+        self._wizard_template = self._safe_json(r)
+        return self._wizard_template
+
+    def _get_wizard_template(self, refresh: bool = False) -> Dict[str, Any]:
+        if refresh or not self._wizard_template:
+            return self._fetch_wizard_template()
+        return self._wizard_template
 
     def _init_new_portale_session(self) -> None:
         init_url = "https://portale.agenziaentrate.gov.it/portale-rest/rs/initPortale?to=FATBTB"
@@ -110,10 +124,7 @@ class FEScraperEngine:
         if r.status_code != 200:
             raise Exception(f"Init wizard fallita (status {r.status_code}).")
 
-        wizard_template = "https://ivaservizi.agenziaentrate.gov.it/instr/instradamento-fatture-rest/rs/wizardTemplate"
-        r = self._request_with_x_appl("GET", wizard_template, verify=False)
-        if r.status_code != 200:
-            raise Exception(f"Wizard template non disponibile (status {r.status_code}).")
+        self._fetch_wizard_template()
 
     def login(self, cf: str, pin: str, password: str) -> str:
         self.logger("Avvio login (nuovo flusso IAMPE)...")
@@ -155,20 +166,30 @@ class FEScraperEngine:
         self.logger("Login effettuato con successo.")
         return "NEW_LOGIN_FLOW"
 
-    def _wizard_select(self, payload: Dict[str, str]) -> Dict[str, Any]:
+    def _wizard_proceed(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         headers = {"Content-Type": "application/json", "Accept": "application/json, text/plain, */*"}
 
         procedi_url = "https://ivaservizi.agenziaentrate.gov.it/instr/instradamento-fatture-rest/rs/procediWizard"
         r = self._request_with_x_appl("POST", procedi_url, json=payload, headers=headers, verify=False)
         if r.status_code != 200:
             raise Exception(f"Errore procediWizard (status {r.status_code}).")
+        data = self._safe_json(r)
+        self._wizard_template = data
+        return data
 
+    def _wizard_set_user_choice(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        headers = {"Content-Type": "application/json", "Accept": "application/json, text/plain, */*"}
         scelta_url = "https://ivaservizi.agenziaentrate.gov.it/instr/instradamento-fatture-rest/rs/setUserChoice"
         r = self._request_with_x_appl("POST", scelta_url, json=payload, headers=headers, verify=False)
         if r.status_code != 200:
             raise Exception(f"Errore setUserChoice (status {r.status_code}).")
+        data = self._safe_json(r)
+        self._wizard_template = data
+        return data
 
-        return self._safe_json(r)
+    def _wizard_select(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        self._wizard_proceed(payload)
+        return self._wizard_set_user_choice(payload)
 
     def _extract_piva_value(self, data: Dict[str, Any], fallback: str = "") -> str:
         value = data.get("pIva")
@@ -207,7 +228,14 @@ class FEScraperEngine:
             engine = MeStessoEngine(self.session, self.logger, self._wizard_select, self._extract_piva_value)
             return engine.run_selection(p_auth)
         elif engine_type == "INTERMEDIARIO":
-            engine = IntermediarioEngine(self.session, self.logger, self._wizard_select, self._extract_piva_value)
+            engine = IntermediarioEngine(
+                self.session,
+                self.logger,
+                self._wizard_proceed,
+                self._wizard_set_user_choice,
+                self._extract_piva_value,
+                self._get_wizard_template,
+            )
             return engine.run_selection(p_auth, piva, sdi_role)
         else:
             raise ValueError(f"Motore sconosciuto: {engine_type}")
