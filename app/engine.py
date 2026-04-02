@@ -1,5 +1,3 @@
-import os
-import re
 import pytz
 import requests
 from datetime import datetime
@@ -38,6 +36,7 @@ def get_date_chunks(start_str: str, end_str: str) -> List[Tuple[str, str]]:
 
 from app.engine_intermediario import IntermediarioEngine
 from app.engine_mestesso import MeStessoEngine
+from app.engine_delega import DelegaDirettaEngine
 
 class FEScraperEngine:
     def __init__(self, logger_func):
@@ -45,6 +44,7 @@ class FEScraperEngine:
         self.session = self._create_session()
         self.headers_cons = {}
         self.headers_token = {}
+        self._x_appl: Optional[str] = None
 
     def _create_session(self) -> requests.Session:
         requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -55,45 +55,142 @@ class FEScraperEngine:
         })
         return s
 
-    def login(self, cf: str, pin: str, password: str) -> str:
-        self.logger("Avvio login...")
-        self.session.cookies.set_cookie(requests.cookies.create_cookie(domain="ivaservizi.agenziaentrate.gov.it", name="LFR_SESSION_STATE_20159", value=unix_ms()))
-        self.session.cookies.set_cookie(requests.cookies.create_cookie(domain="ivaservizi.agenziaentrate.gov.it", name="LFR_SESSION_STATE_10811916", value=unix_ms()))
+    def _safe_json(self, r: requests.Response) -> Dict[str, Any]:
+        try:
+            data = r.json()
+            if isinstance(data, dict):
+                return data
+            return {"_raw": data}
+        except Exception:
+            return {"_raw_text": r.text}
 
-        r = self.session.get("https://ivaservizi.agenziaentrate.gov.it/portale/web/guest", verify=False)
+    def _request_with_x_appl(self, method: str, url: str, **kwargs) -> requests.Response:
+        headers = dict(kwargs.pop("headers", {}) or {})
+        if self._x_appl and "x-appl" not in headers:
+            headers["x-appl"] = self._x_appl
+
+        r = self.session.request(method, url, headers=headers, **kwargs)
+        if r.status_code == 409 and r.headers.get("x-appl"):
+            self._x_appl = r.headers["x-appl"]
+            headers["x-appl"] = self._x_appl
+            r = self.session.request(method, url, headers=headers, **kwargs)
+
+        return r
+
+    def _init_new_portale_session(self) -> None:
+        init_url = "https://portale.agenziaentrate.gov.it/portale-rest/rs/initPortale?to=FATBTB"
+        r = self.session.get(init_url, allow_redirects=False, verify=False)
+
+        if r.status_code == 501 and r.headers.get("x-red"):
+            r = self.session.get(r.headers["x-red"], allow_redirects=False, verify=False)
+
+        if r.status_code not in (200, 204):
+            raise Exception(f"Init Portale fallita (status {r.status_code}).")
+
+        perm_url = "https://portale.agenziaentrate.gov.it/portale-rest/rs/servizi/permessiFatturazione"
+        r = self._request_with_x_appl("GET", perm_url, verify=False)
         if r.status_code != 200:
-            raise Exception("Impossibile connettersi alla homepage.")
+            raise Exception(f"Permessi fatturazione non ottenuti (status {r.status_code}).")
+
+        vai_url = "https://portale.agenziaentrate.gov.it/portale-rest/rs/servizi/vaiAFatturazione/b2b"
+        r = self._request_with_x_appl("GET", vai_url, verify=False)
+        if r.status_code != 200:
+            raise Exception(f"Accesso a fatturazione non riuscito (status {r.status_code}).")
+
+        target = self._safe_json(r).get("url")
+        if not target:
+            raise Exception("URL di instradamento a Fatturazione non presente nella risposta.")
+
+        r = self.session.get(target, allow_redirects=True, verify=False)
+        if r.status_code != 200:
+            raise Exception(f"Redirect a Fatturazione fallito (status {r.status_code}).")
+
+        init_light = "https://ivaservizi.agenziaentrate.gov.it/instr/instradamento-fatture-rest/rs/initLight"
+        r = self._request_with_x_appl("GET", init_light, verify=False)
+        if r.status_code != 200:
+            raise Exception(f"Init wizard fallita (status {r.status_code}).")
+
+        wizard_template = "https://ivaservizi.agenziaentrate.gov.it/instr/instradamento-fatture-rest/rs/wizardTemplate"
+        r = self._request_with_x_appl("GET", wizard_template, verify=False)
+        if r.status_code != 200:
+            raise Exception(f"Wizard template non disponibile (status {r.status_code}).")
+
+    def login(self, cf: str, pin: str, password: str) -> str:
+        self.logger("Avvio login (nuovo flusso IAMPE)...")
+
+        login_page = (
+            "https://iampe.agenziaentrate.gov.it/sam/UI/Login"
+            "?realm=%2Fagenziaentrate&service=auth&goto="
+            "https%3A%2F%2Fportale.agenziaentrate.gov.it%2FPortaleWeb%2Fhome%3Fto%3DFATBTB"
+        )
+        r = self.session.get(login_page, verify=False)
+        if r.status_code != 200:
+            raise Exception(f"Pagina login IAMPE non raggiungibile (status {r.status_code}).")
 
         payload = {
-            "_58_saveLastPath": "false",
-            "_58_redirect": "",
-            "_58_doActionAfterLogin": "false",
-            "_58_login": cf,
-            "_58_pin": pin,
-            "_58_password": password,
+            "username": cf,
+            "password": password,
+            "pin": pin,
         }
+        headers = {"Content-Type": "application/json", "Accept": "application/json, text/plain, */*"}
         r = self.session.post(
-            "https://ivaservizi.agenziaentrate.gov.it/portale/home"
-            "?p_p_id=58&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view"
-            "&p_p_col_id=column-1&p_p_col_pos=3&p_p_col_count=4"
-            "&_58_struts_action=%2Flogin%2Flogin",
-            data=payload
+            "https://iampe.agenziaentrate.gov.it/api/login/telematico",
+            json=payload,
+            headers=headers,
+            verify=False,
         )
-
-        m = re.findall(r"Liferay\.authToken = '.*';", r.text)
-        if not m:
-            with open("debug_login_error.html", "w", encoding="utf-8") as f:
-                f.write(r.text)
-            raise Exception("Liferay.authToken non trovato. Controlla debug_login_error.html")
-
-        p_auth = m[0].replace("Liferay.authToken = '", "").replace("';", "")
-        
-        r = self.session.get(f"https://ivaservizi.agenziaentrate.gov.it/dp/api?v={unix_ms()}")
         if r.status_code != 200:
-            raise Exception("Login fallito (dp/api error).")
+            with open("debug_login_error.html", "w", encoding="utf-8") as f:
+                f.write(f"Status Code: {r.status_code}\n\n{r.text}")
+            raise Exception(f"Login IAMPE fallito (status {r.status_code}).")
 
+        data = self._safe_json(r)
+        esito = str(data.get("esito", "OK")).upper()
+        if esito not in ("OK", "SUCCESS"):
+            with open("debug_login_error.html", "w", encoding="utf-8") as f:
+                f.write(str(data))
+            raise Exception(f"Login IAMPE rifiutato: {data}")
+
+        self._init_new_portale_session()
         self.logger("Login effettuato con successo.")
-        return p_auth
+        return "NEW_LOGIN_FLOW"
+
+    def _wizard_select(self, payload: Dict[str, str]) -> Dict[str, Any]:
+        headers = {"Content-Type": "application/json", "Accept": "application/json, text/plain, */*"}
+
+        procedi_url = "https://ivaservizi.agenziaentrate.gov.it/instr/instradamento-fatture-rest/rs/procediWizard"
+        r = self._request_with_x_appl("POST", procedi_url, json=payload, headers=headers, verify=False)
+        if r.status_code != 200:
+            raise Exception(f"Errore procediWizard (status {r.status_code}).")
+
+        scelta_url = "https://ivaservizi.agenziaentrate.gov.it/instr/instradamento-fatture-rest/rs/setUserChoice"
+        r = self._request_with_x_appl("POST", scelta_url, json=payload, headers=headers, verify=False)
+        if r.status_code != 200:
+            raise Exception(f"Errore setUserChoice (status {r.status_code}).")
+
+        return self._safe_json(r)
+
+    def _extract_piva_value(self, data: Dict[str, Any], fallback: str = "") -> str:
+        value = data.get("pIva")
+        if value is None:
+            value = data.get("PIva")
+
+        if isinstance(value, str):
+            return value.strip() or fallback
+
+        if isinstance(value, list) and value:
+            first = value[0]
+            if isinstance(first, dict):
+                candidate = str(first.get("piva", "")).strip()
+                if candidate:
+                    return candidate
+
+        if isinstance(value, dict):
+            candidate = str(value.get("piva", "")).strip()
+            if candidate:
+                return candidate
+
+        return fallback
 
     def select_engine(self, engine_type: str, p_auth: str, piva: str, sdi_role: str) -> str:
         """
@@ -102,64 +199,27 @@ class FEScraperEngine:
         sdi_role: "FOL" o "ENT"
         RITORNA: La PIVA operativa (rilevata o confermata).
         """
+        self.logger(f"Selezione utenza con nuovo wizard: {engine_type}")
         if engine_type == "DELEGA_DIRETTA":
-            self._select_delega_diretta(p_auth, piva)
-            return piva
+            engine = DelegaDirettaEngine(self.session, self.logger, self._wizard_select, self._extract_piva_value)
+            return engine.run_selection(p_auth, piva)
         elif engine_type == "ME_STESSO":
-            # Uso il nuovo motore specializzato che rileva la PIVA
-            engine = MeStessoEngine(self.session, self.logger)
+            engine = MeStessoEngine(self.session, self.logger, self._wizard_select, self._extract_piva_value)
             return engine.run_selection(p_auth)
         elif engine_type == "INTERMEDIARIO":
-            # Uso il nuovo motore specializzato
-            engine = IntermediarioEngine(self.session, self.logger)
-            engine.run_selection(p_auth, piva, sdi_role)
-            return piva
+            engine = IntermediarioEngine(self.session, self.logger, self._wizard_select, self._extract_piva_value)
+            return engine.run_selection(p_auth, piva, sdi_role)
         else:
             raise ValueError(f"Motore sconosciuto: {engine_type}")
 
-    def _select_delega_diretta(self, p_auth: str, piva: str):
-        self.logger(f"Selezione Delega Diretta per {piva}")
-        
-        # Step 1: scelta "Delega Diretta"
-        payload = {"sceltaincarico": "ut1a3", "tipoincaricante": "incIncaricato"}
-        url1 = (
-            "https://ivaservizi.agenziaentrate.gov.it/portale/scelta-utenza-lavoro"
-            f"?p_auth={p_auth}"
-            "&p_p_id=SceltaUtenzaLavoro_WAR_SceltaUtenzaLavoroportlet"
-            "&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_p_col_id=column-1&p_p_col_count=1"
-            "&_SceltaUtenzaLavoro_WAR_SceltaUtenzaLavoroportlet_javax.portlet.action=tipoUtenzaAction"
-        )
-        r1 = self.session.post(url1, data=payload)
-        self.logger(f"  Step 1 (tipoUtenzaAction): {r1.status_code}")
-
-        # Step 2: invio PIVA
-        payload = {"cf_inserito": piva}
-        url2 = (
-            "https://ivaservizi.agenziaentrate.gov.it/portale/scelta-utenza-lavoro"
-            f"?p_auth={p_auth}"
-            "&p_p_id=SceltaUtenzaLavoro_WAR_SceltaUtenzaLavoroportlet"
-            "&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_p_col_id=column-1&p_p_col_count=1"
-            "&_SceltaUtenzaLavoro_WAR_SceltaUtenzaLavoroportlet_javax.portlet.action=delegaDirettaAction"
-        )
-        r2 = self.session.post(url2, data=payload)
-        self.logger(f"  Step 2 (delegaDirettaAction): {r2.status_code}")
-
-        # Step 3: accettazione disclaimer (GET)
-        url3 = (
-            "https://ivaservizi.agenziaentrate.gov.it/portale/scelta-utenza-lavoro"
-            f"?p_auth={p_auth}"
-            "&p_p_id=SceltaUtenzaLavoro_WAR_SceltaUtenzaLavoroportlet"
-            "&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_p_col_id=column-1&p_p_col_count=1"
-            "&_SceltaUtenzaLavoro_WAR_SceltaUtenzaLavoroportlet_javax.portlet.action=proseguiDelegaAction"
-        )
-        r3 = self.session.get(url3)
-        self.logger(f"  Step 3 (proseguiDelegaAction): {r3.status_code}")
-
-        if r3.status_code != 200:
-             raise Exception(f"Errore selezione Delega Diretta (Status {r3.status_code}).")
-
     def get_b2b_tokens(self):
         self.logger("Richiesta Token B2B...")
+        preflight = self.session.get(
+            "https://ivaservizi.agenziaentrate.gov.it/dp/PI2FC",
+            verify=False,
+        )
+        self.logger(f"Preflight /dp/PI2FC: {preflight.status_code}")
+
         self.session.get(f"https://ivaservizi.agenziaentrate.gov.it/cons/cons-web/?v={unix_ms()}")
         headers = {"Accept": "application/json, text/plain, */*"}
         r = self.session.get(

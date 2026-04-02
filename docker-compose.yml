@@ -4,7 +4,7 @@ services:
     image: fe-scraper:latest
     container_name: fe-scraper-service
     volumes:
-      - ./.env:/app/.env
+      - ./aziende:/app/aziende:ro
       - ./output:/app/output
     environment:
       # Impostare a 1 per farlo girare in ciclo continuo come "servizio"

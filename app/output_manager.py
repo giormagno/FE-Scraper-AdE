@@ -212,30 +212,6 @@ class OutputManager:
             except Exception:
                 pass 
 
-        # Salva elenco errori download in JSON
-        if stats["failed"]:
-            failures_path = os.path.join(base_path, "download_failures.json")
-            with open(failures_path, "w", encoding="utf-8") as f:
-                data = {
-                    "category": category,
-                    "found": stats["found"],
-                    "downloaded": stats["downloaded"],
-                    "failed": stats["failed"],
-                }
-                import json
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        if stats["failed_struct"]:
-            failures_path = os.path.join(base_path, "download_failures_struct.json")
-            with open(failures_path, "w", encoding="utf-8") as f:
-                data = {
-                    "category": category,
-                    "found": stats["found"],
-                    "downloaded": stats["downloaded"],
-                    "failed": stats["failed_struct"],
-                }
-                import json
-                json.dump(data, f, ensure_ascii=False, indent=2)
-
         return stats
 
     def final_check(self, category: str, stats: Dict[str, Any]):

@@ -1,11 +1,13 @@
 from typing import Any, Callable, Dict
 import requests
 
-class IntermediarioEngine:
+
+class DelegaDirettaEngine:
     """
-    Motore specifico per la gestione degli incarichi come Intermediario (Incaricato).
-    Separato per modularità e facilità di aggiornamento dei payload SDI.
+    Motore specifico per la selezione dell'utenza "Delega Diretta".
+    Mantiene la stessa sequenza di chiamate storicamente usata dal motore principale.
     """
+
     def __init__(
         self,
         session: requests.Session,
@@ -18,24 +20,20 @@ class IntermediarioEngine:
         self._wizard_select = wizard_select_func
         self._extract_piva_value = extract_piva_func
 
-    def run_selection(self, p_auth: str, piva: str, sdi_role: str) -> str:
+    def run_selection(self, p_auth: str, piva: str) -> str:
         """
-        Esegue la catena di richieste per selezionare il ruolo incaricato 
-        e inserire la PIVA del cliente.
+        Esegue la selezione dell'utenza delegata e conferma il soggetto su cui operare.
         """
-        self.logger(f"Inizio procedura Incaricato per cliente {piva}")
         _ = p_auth
         payload = {
-            "tipoutenza": "incaricato",
-            "tipoDelega": "incDiretto",
+            "tipoutenza": "delegaDiretta",
+            "tipoDelega": "delDiretta",
             "cf": piva,
             "pIva": piva,
-            "ruoloSdi": sdi_role,
         }
         data = self._wizard_select(payload)
         confirmed_piva = self._extract_piva_value(data, piva.strip())
         if not confirmed_piva:
-            raise Exception("PIVA non confermata dal wizard per utenza 'INTERMEDIARIO'.")
+            raise Exception("PIVA non confermata dal wizard per utenza 'DELEGA_DIRETTA'.")
         self.logger(f"PIVA confermata dal wizard: {confirmed_piva}")
-        self.logger("Procedura Incaricato completata con successo.")
         return confirmed_piva
