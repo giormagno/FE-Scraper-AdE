@@ -2,9 +2,10 @@ import os
 from lxml import etree
 from sqlalchemy import func
 from datetime import datetime
+import app.database as database
 from app.database import (
-    SessionLocal, DatiGenerali, Anagrafica, RigheFattura,
-    DatiRiferimento, DatiDDT, DatiRiepilogo, DatiPagamento, DettaglioPagamento, init_db
+    DatiGenerali, Anagrafica, RigheFattura,
+    DatiRiferimento, DatiDDT, DatiRiepilogo, DatiPagamento, DettaglioPagamento
 )
 
 LOG_FILE = "log_esecuzione.txt"
@@ -61,8 +62,8 @@ def process_xml_file(file_path: str, data_ricezione: str | None = None) -> str:
     """Parsa un file XML della fattura elettronica ed estrae i dati completi (Fase 7)."""
     if not os.path.exists(file_path): return "ERROR"
 
-    init_db()
-    db = SessionLocal()
+    database.init_db()
+    db = database.get_session_factory()()
     nome_file = os.path.basename(file_path)
 
     try:

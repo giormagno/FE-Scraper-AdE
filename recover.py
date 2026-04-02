@@ -6,6 +6,7 @@ import shutil
 import sys
 from datetime import datetime
 
+from app.database import configure_database
 from app.engine import FEScraperEngine, unix_ms
 from app.output_manager import OutputManager
 
@@ -323,6 +324,7 @@ def main():
     logger(f"AVVIO RECOVER PROFILO {cfg['PROFILE_NAME']}")
     logger("=" * 70)
     logger(f"Log profilo: {log_path}")
+    configure_database(cfg["ENV_FILE"])
     failures = load_failures(args.failures_json)
     grouped = group_by_category(failures)
 

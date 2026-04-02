@@ -6,6 +6,7 @@ import shutil
 from datetime import datetime, timedelta
 from typing import Dict, List
 
+from app.database import configure_database
 from app.engine import FEScraperEngine, unix_ms
 from app.output_manager import OutputManager
 
@@ -448,6 +449,8 @@ def run_profile(cfg: Dict[str, str], profile_index: int, total_profiles: int) ->
         logger(f"AVVIO PROFILO {profile_name}")
     logger("=" * 70)
     logger(f"Log profilo: {log_path}")
+
+    configure_database(cfg["ENV_FILE"])
 
     engine = FEScraperEngine(logger)
 

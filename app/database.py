@@ -1,18 +1,20 @@
 from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Text, text, inspect
+from sqlalchemy.engine import URL
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 import os
+
 def load_env(path: str = ".env") -> dict:
     env_data = {}
     if not os.path.exists(path):
-         return env_data
+        return env_data
     with open(path, "r", encoding="utf-8") as f:
-         for line in f:
-             line = line.strip()
-             if not line or line.startswith("#") or "=" not in line:
-                 continue
-             k, v = line.split("=", 1)
-             env_data[k.strip()] = v.strip()
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            env_data[k.strip()] = v.strip()
     return env_data
 
 
@@ -149,31 +151,100 @@ class DettaglioPagamento(Base):
     
     testata_pagamento = relationship("DatiPagamento", back_populates="dettagli")
 
-# Database Configuration
-env = load_env()
-db_type = env.get("DB_TYPE", "sqlite").lower()
+engine = None
+SessionLocal = None
+CURRENT_DB_TYPE = "sqlite"
+CURRENT_DB_ENV_FILE = ".env"
+CURRENT_CONNECTION_STRING = ""
+CURRENT_DISPLAY_CONNECTION_STRING = ""
 
-if db_type == "mysql":
-    db_host = env.get("DB_HOST", "localhost")
-    db_port = env.get("DB_PORT", "3306")
-    db_name = env.get("DB_NAME", "")
-    db_user = env.get("DB_USER", "")
-    db_pass = env.get("DB_PASS", "")
-    connection_string = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
-else:
-    # Default is SQLite
+
+def build_connection_target(env: dict):
+    db_type = env.get("DB_TYPE", "sqlite").strip().lower() or "sqlite"
+
+    if db_type == "mysql":
+        db_host = env.get("DB_HOST", "localhost")
+        db_port = env.get("DB_PORT", "3306")
+        db_name = env.get("DB_NAME", "")
+        db_user = env.get("DB_USER", "")
+        db_pass = env.get("DB_PASS", "")
+        url = URL.create(
+            "mysql+pymysql",
+            username=db_user,
+            password=db_pass,
+            host=db_host,
+            port=int(db_port) if str(db_port).strip() else 3306,
+            database=db_name,
+        )
+        return db_type, url
+
     db_path = env.get("DB_SQLITE_PATH", "fatture_v3.db")
-    connection_string = f"sqlite:///{db_path}"
+    return "sqlite", f"sqlite:///{db_path}"
 
-engine = create_engine(connection_string)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def configure_database(env_path: str = ".env", env: dict | None = None) -> str:
+    global engine, SessionLocal, CURRENT_DB_TYPE, CURRENT_DB_ENV_FILE
+    global CURRENT_CONNECTION_STRING, CURRENT_DISPLAY_CONNECTION_STRING
+
+    if env is None:
+        env = load_env(env_path)
+
+    db_type, connection_target = build_connection_target(env)
+    if isinstance(connection_target, URL):
+        full_connection_string = connection_target.render_as_string(hide_password=False)
+        display_connection_string = connection_target.render_as_string()
+    else:
+        full_connection_string = connection_target
+        display_connection_string = connection_target
+
+    if engine is not None and full_connection_string == CURRENT_CONNECTION_STRING:
+        CURRENT_DB_TYPE = db_type
+        CURRENT_DB_ENV_FILE = env_path
+        return display_connection_string
+
+    if engine is not None:
+        engine.dispose()
+
+    engine = create_engine(connection_target)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    CURRENT_DB_TYPE = db_type
+    CURRENT_DB_ENV_FILE = env_path
+    CURRENT_CONNECTION_STRING = full_connection_string
+    CURRENT_DISPLAY_CONNECTION_STRING = display_connection_string
+    return display_connection_string
+
+
+def get_engine():
+    global engine
+    if engine is None:
+        configure_database()
+    return engine
+
+
+def get_session_factory():
+    global SessionLocal
+    if SessionLocal is None:
+        configure_database()
+    return SessionLocal
+
+
+def get_database_info() -> dict:
+    return {
+        "db_type": CURRENT_DB_TYPE,
+        "env_file": CURRENT_DB_ENV_FILE,
+        "connection_string": CURRENT_DISPLAY_CONNECTION_STRING,
+    }
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    current_engine = get_engine()
+    Base.metadata.create_all(bind=current_engine)
     # Migrazione semplice: aggiunge colonna data_ricezione se manca
-    inspector = inspect(engine)
+    inspector = inspect(current_engine)
     columns = [c['name'] for c in inspector.get_columns('dati_generali')]
     if "data_ricezione" not in columns:
-        with engine.connect() as conn:
+        with current_engine.connect() as conn:
             conn.execute(text("ALTER TABLE dati_generali ADD COLUMN data_ricezione TEXT"))
             conn.commit()
+
+
+configure_database()
